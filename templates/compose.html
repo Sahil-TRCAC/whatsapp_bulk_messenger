@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-plus-circle me-2"></i>Compose Campaign</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <form id="composeForm">
+                    <div class="mb-3">
+                        <label class="form-label">Campaign Name</label>
+                        <input type="text" class="form-control" name="name" id="campaignName" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Message Template</label>
+                        <textarea class="form-control" name="message_template" id="messageTemplate" rows="6" required placeholder="Hello {{name}}, this is a test message..."></textarea>
+                        <div class="d-flex justify-content-between mt-2">
+                            <small class="text-muted">Use <code>{{name}}</code> as placeholder for contact name</small>
+                            <small class="text-muted"><span id="charCount">0</span> characters</small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Live Preview</label>
+                        <div class="border rounded p-3 bg-light" id="livePreview" style="min-height:60px;">
+                            <em class="text-muted">Type your message above to see preview</em>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Image (optional)</label>
+                        <input type="file" class="form-control" name="image" id="campaignImage" accept="image/*">
+                        <div id="imagePreview" class="mt-2"></div>
+                    </div>
+
+                    <hr>
+                    <h6>Recipients</h6>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="recipient_type" value="all" id="recAll" checked>
+                            <label class="form-check-label">All Active Contacts</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="recipient_type" value="groups" id="recGroups">
+                            <label class="form-check-label">Specific Groups</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="recipient_type" value="custom" id="recCustom">
+                            <label class="form-check-label">Custom Phone Numbers</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="groupsSection" style="display:none;">
+                        <label class="form-label">Select Groups</label>
+                        <select class="form-select" name="groups" multiple size="5">
+                            {% for g in groups %}
+                            <option value="{{ g.id }}">{{ g.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="customSection" style="display:none;">
+                        <label class="form-label">Phone Numbers (one per line, with country code, no +)</label>
+                        <textarea class="form-control" name="custom_numbers" rows="5" placeholder="919876543210&#10;919876543211&#10;919876543212"></textarea>
+                    </div>
+
+                    <hr>
+                    <h6>Delay Settings</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Min Delay (seconds)</label>
+                            <input type="number" class="form-control" name="delay_min" value="5" min="1">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Max Delay (seconds)</label>
+                            <input type="number" class="form-control" name="delay_max" value="10" min="1">
+                        </div>
+                    </div>
+                    <small class="text-muted">Recommended: 5-10 seconds minimum to avoid WhatsApp ban</small>
+
+                    <div class="mt-4 d-flex gap-2">
+                        <button type="submit" name="action" value="draft" class="btn btn-secondary"><i class="bi bi-save"></i> Save as Draft</button>
+                        <button type="submit" name="action" value="launch" class="btn btn-success"><i class="bi bi-send"></i> Launch Campaign</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Tips</h6>
+            </div>
+            <div class="card-body">
+                <ul class="small text-muted mb-0">
+                    <li class="mb-2">Use <code>{{name}}</code> in your message to personalize each message.</li>
+                    <li class="mb-2">Phone numbers must include country code without <code>+</code> or spaces.</li>
+                    <li class="mb-2">Minimum 5 second delay is recommended to avoid being banned.</li>
+                    <li class="mb-2">Make sure WhatsApp Web is connected before launching.</li>
+                    <li>You can pause and resume campaigns after launching.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-shield-exclamation"></i> Rate Limits</h6>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted mb-0">WhatsApp has strict anti-spam measures. Keep delays at 5-10 seconds and avoid sending more than 50 messages per hour to prevent being banned.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const template = document.getElementById('messageTemplate');
+    const preview = document.getElementById('livePreview');
+    const charCount = document.getElementById('charCount');
+
+    template.addEventListener('input', function() {
+        const text = this.value;
+        charCount.textContent = text.length;
+        const previewText = text.replace(/\{\{name\}\}/g, '<strong>John</strong>');
+        preview.innerHTML = previewText || '<em class="text-muted">Type your message above to see preview</em>';
+    });
+
+    document.querySelectorAll('input[name="recipient_type"]').forEach(r => {
+        r.addEventListener('change', function() {
+            document.getElementById('groupsSection').style.display = this.value === 'groups' ? 'block' : 'none';
+            document.getElementById('customSection').style.display = this.value === 'custom' ? 'block' : 'none';
+        });
+    });
+
+    document.getElementById('campaignImage').addEventListener('change', function(e) {
+        const container = document.getElementById('imagePreview');
+        container.innerHTML = '';
+        if (this.files && this.files[0]) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(this.files[0]);
+            img.style.maxWidth = '200px';
+            img.style.maxHeight = '200px';
+            img.className = 'rounded';
+            container.appendChild(img);
+        }
+    });
+
+    document.getElementById('composeForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const submitter = e.submitter;
+        const action = submitter ? submitter.value : 'draft';
+
+        const formData = new FormData(this);
+        formData.append('action', action);
+
+        const btn = submitter;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving...';
+
+        fetch('/campaigns/compose/', {
+            method: 'POST',
+            body: formData,
+            headers: {'X-CSRFToken': getCookie('csrftoken')}
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) {
+                showToast(d.error, 'danger');
+                btn.disabled = false;
+                btn.innerHTML = action === 'launch' ? '<i class="bi bi-send"></i> Launch Campaign' : '<i class="bi bi-save"></i> Save as Draft';
+                return;
+            }
+            showToast(`Campaign created with ${d.recipients_count} recipients!`);
+            setTimeout(() => { window.location.href = `/campaigns/${d.campaign_id}/`; }, 1000);
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.innerHTML = action === 'launch' ? '<i class="bi bi-send"></i> Launch Campaign' : '<i class="bi bi-save"></i> Save as Draft';
+        });
+    });
+});
+</script>
+{% endblock %}

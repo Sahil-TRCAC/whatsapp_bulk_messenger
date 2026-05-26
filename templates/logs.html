@@ -1,0 +1,217 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <h1><i class="bi bi-send me-2"></i>{{ campaign.name }}</h1>
+    <div>
+        <a href="{% url 'campaign_list' %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
+        <a href="{% url 'campaign_export_logs' campaign.id %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-download"></i> Export Logs</a>
+        {% if campaign.status == 'draft' %}
+        <button class="btn btn-success btn-sm" onclick="launchCampaign({{ campaign.id }})"><i class="bi bi-play-fill"></i> Launch</button>
+        {% endif %}
+        {% if campaign.status == 'running' %}
+        <button class="btn btn-warning btn-sm" onclick="pauseCampaign({{ campaign.id }})"><i class="bi bi-pause-fill"></i> Pause</button>
+        {% endif %}
+        {% if campaign.status == 'paused' %}
+        <button class="btn btn-success btn-sm" onclick="resumeCampaign({{ campaign.id }})"><i class="bi bi-play-fill"></i> Resume</button>
+        <button class="btn btn-danger btn-sm" onclick="cancelCampaign({{ campaign.id }})"><i class="bi bi-stop-fill"></i> Cancel</button>
+        {% endif %}
+        {% if campaign.status == 'running' %}
+        <button class="btn btn-danger btn-sm" onclick="cancelCampaign({{ campaign.id }})"><i class="bi bi-stop-fill"></i> Stop</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card text-center">
+            <div class="card-body">
+                <h5 class="text-muted small mb-2">Status</h5>
+                <h4 id="detailStatus">
+                    {% if campaign.status == 'draft' %}<span class="badge bg-secondary">Draft</span>
+                    {% elif campaign.status == 'running' %}<span class="badge bg-primary">Running</span>
+                    {% elif campaign.status == 'paused' %}<span class="badge bg-warning text-dark">Paused</span>
+                    {% elif campaign.status == 'completed' %}<span class="badge bg-success">Completed</span>
+                    {% elif campaign.status == 'failed' %}<span class="badge bg-danger">Failed</span>
+                    {% endif %}
+                </h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card text-center">
+            <div class="card-body">
+                <h5 class="text-muted small mb-2">Total</h5>
+                <h4 id="detailTotal">{{ campaign.total_recipients }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card text-center">
+            <div class="card-body">
+                <h5 class="text-muted small mb-2">Sent</h5>
+                <h4 id="detailSent" class="text-success">{{ campaign.sent_count }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card text-center">
+            <div class="card-body">
+                <h5 class="text-muted small mb-2">Failed</h5>
+                <h4 id="detailFailed" class="text-danger">{{ campaign.failed_count }}</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h6>Progress</h6>
+        <div class="progress" style="height:20px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar"
+                 role="progressbar" style="width:{{ campaign.progress }}%">
+                {{ campaign.progress }}%
+            </div>
+        </div>
+        <small class="text-muted mt-1 d-block" id="progressText">
+            {{ campaign.sent_count }} sent, {{ campaign.failed_count }} failed, {{ campaign.pending_count }} pending
+        </small>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Recipient Log</h5>
+        <small class="text-muted" id="refreshIndicator">Auto-refreshing every 5s</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Phone</th>
+                        <th>Status</th>
+                        <th>Sent At</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody id="recipientsBody">
+                    <tr><td colspan="6" class="text-center py-4"><div class="spinner-border spinner-border-sm"></div> Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<nav class="mt-3">
+    <ul class="pagination justify-content-center" id="recipientPagination"></ul>
+</nav>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+
+function loadRecipients(page) {
+    page = page || 1;
+    currentPage = page;
+    fetch(`/campaigns/{{ campaign.id }}/recipients/?page=${page}`)
+        .then(r => r.json())
+        .then(d => {
+            const tbody = document.getElementById('recipientsBody');
+            tbody.innerHTML = '';
+            d.recipients.forEach(r => {
+                const statusClass = r.status === 'sent' ? 'success' : r.status === 'failed' ? 'danger' : r.status === 'skipped' ? 'secondary' : 'warning';
+                tbody.innerHTML += `<tr>
+                    <td>${r.id}</td>
+                    <td>${r.name}</td>
+                    <td>${r.phone}</td>
+                    <td><span class="badge bg-${statusClass}">${r.status_display}</span></td>
+                    <td><small class="text-muted">${r.sent_at || '-'}</small></td>
+                    <td><small class="text-danger">${r.error || ''}</small></td>
+                </tr>`;
+            });
+            if (d.recipients.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No recipients yet</td></tr>';
+            }
+
+            document.getElementById('detailTotal').textContent = d.total;
+            document.getElementById('detailSent').textContent = d.sent;
+            document.getElementById('detailFailed').textContent = d.failed;
+
+            const pct = d.progress || 0;
+            document.getElementById('progressBar').style.width = pct + '%';
+            document.getElementById('progressBar').textContent = pct + '%';
+            document.getElementById('progressText').textContent = `${d.sent} sent, ${d.failed} failed, ${d.pending} pending`;
+
+            const statusEl = document.getElementById('detailStatus');
+            if (d.status === 'draft') statusEl.innerHTML = '<span class="badge bg-secondary">Draft</span>';
+            else if (d.status === 'running') statusEl.innerHTML = '<span class="badge bg-primary">Running</span>';
+            else if (d.status === 'paused') statusEl.innerHTML = '<span class="badge bg-warning text-dark">Paused</span>';
+            else if (d.status === 'completed') statusEl.innerHTML = '<span class="badge bg-success">Completed</span>';
+            else if (d.status === 'failed') statusEl.innerHTML = '<span class="badge bg-danger">Failed</span>';
+
+            if (d.status === 'completed' || d.status === 'failed') {
+                document.getElementById('refreshIndicator').textContent = 'Stopped';
+            }
+
+            const pag = document.getElementById('recipientPagination');
+            pag.innerHTML = '';
+            if (d.has_prev) {
+                pag.innerHTML += `<li class="page-item"><a class="page-link" href="#" onclick="loadRecipients(${d.page - 1});return false;">Previous</a></li>`;
+            }
+            for (let i = 1; i <= d.num_pages; i++) {
+                pag.innerHTML += `<li class="page-item ${i === d.page ? 'active' : ''}"><a class="page-link" href="#" onclick="loadRecipients(${i});return false;">${i}</a></li>`;
+            }
+            if (d.has_next) {
+                pag.innerHTML += `<li class="page-item"><a class="page-link" href="#" onclick="loadRecipients(${d.page + 1});return false;">Next</a></li>`;
+            }
+        });
+}
+
+function launchCampaign(id) {
+    if (!confirm('Launch this campaign?')) return;
+    fetch(`/campaigns/${id}/launch/`, { method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')} })
+        .then(r => r.json()).then(d => {
+            if (d.error) { showToast(d.error, 'danger'); return; }
+            showToast('Campaign launched!');
+            loadRecipients(1);
+        });
+}
+
+function pauseCampaign(id) {
+    fetch(`/campaigns/${id}/pause/`, { method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')} })
+        .then(r => r.json()).then(d => {
+            showToast('Campaign paused');
+            loadRecipients(currentPage);
+        });
+}
+
+function resumeCampaign(id) {
+    fetch(`/campaigns/${id}/resume/`, { method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')} })
+        .then(r => r.json()).then(d => {
+            showToast('Campaign resumed');
+            loadRecipients(currentPage);
+        });
+}
+
+function cancelCampaign(id) {
+    if (!confirm('Cancel this campaign?')) return;
+    fetch(`/campaigns/${id}/cancel/`, { method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')} })
+        .then(r => r.json()).then(d => {
+            showToast('Campaign cancelled');
+            loadRecipients(currentPage);
+        });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadRecipients(1);
+    setInterval(function() {
+        const indicator = document.getElementById('refreshIndicator');
+        if (indicator.textContent === 'Stopped') return;
+        loadRecipients(currentPage);
+    }, 5000);
+});
+</script>
+{% endblock %}

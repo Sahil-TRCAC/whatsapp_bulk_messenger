@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-wifi me-2"></i>WhatsApp Connection</h1>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-body py-5">
+                <div id="statusSection">
+                    <div id="statusIcon" style="font-size:5rem;">
+                        <i class="bi bi-plug text-danger"></i>
+                    </div>
+                    <h3 id="statusText" class="mt-3">Disconnected</h3>
+                    <p id="statusDetail" class="text-muted">WhatsApp Web is not connected</p>
+                </div>
+
+                <div id="qrSection" style="display:none;">
+                    <h5 class="mb-3">Scan QR Code with WhatsApp</h5>
+                    <p class="text-muted small">Open WhatsApp on your phone &rarr; Linked Devices &rarr; Link a Device</p>
+                    <div id="qrContainer" class="d-inline-block border rounded p-2 bg-white">
+                        <img id="qrImage" src="" alt="QR Code" style="width:264px;height:264px;">
+                    </div>
+                    <p class="text-muted small mt-2">Refreshing...</p>
+                </div>
+
+                <div id="connectedSection" style="display:none;">
+                    <div style="font-size:5rem;">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                    </div>
+                    <h3 class="mt-3 text-success">Connected</h3>
+                    <p id="connectedInfo" class="text-muted">WhatsApp Web is active</p>
+                </div>
+
+                <div class="mt-4">
+                    <button id="connectBtn" class="btn btn-success btn-lg" onclick="connectWhatsApp()">
+                        <i class="bi bi-plug"></i> Connect WhatsApp
+                    </button>
+                    <button id="disconnectBtn" class="btn btn-outline-danger btn-lg" style="display:none;" onclick="disconnectWhatsApp()">
+                        <i class="bi bi-plug-fill"></i> Disconnect
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-body">
+                <h6><i class="bi bi-info-circle"></i> How it works</h6>
+                <ol class="small text-muted mb-0">
+                    <li class="mb-1">Click "Connect WhatsApp" to launch Chrome browser</li>
+                    <li class="mb-1">A Chrome window will open showing WhatsApp Web QR code</li>
+                    <li class="mb-1">Open WhatsApp on your phone → Linked Devices → Link a Device</li>
+                    <li class="mb-1">Scan the QR code shown on this page (or in the Chrome window)</li>
+                    <li>Once connected, session is saved - no re-scan needed next time</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let qrInterval = null;
+
+function connectWhatsApp() {
+    document.getElementById('connectBtn').disabled = true;
+    document.getElementById('connectBtn').innerHTML = '<span class="spinner-border spinner-border-sm"></span> Starting...';
+
+    fetch('/whatsapp/connect/', { method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')} })
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) {
+                showToast(d.error, 'danger');
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('connectBtn').innerHTML = '<i class="bi bi-plug"></i> Connect WhatsApp';
+                return;
+            }
+            startQRPolling();
+        })
+        .catch(() => {
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('connectBtn').innerHTML = '<i class="bi bi-plug"></i> Connect WhatsApp';
+        });
+}
+
+function disconnectWhatsApp() {
+    if (!confirm('Disconnect WhatsApp Web?')) return;
+    stopQRPolling();
+    fetch('/whatsapp/disconnect/', { method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')} })
+        .then(r => r.json())
+        .then(d => {
+            showToast('Disconnected');
+            updateUI('disconnected');
+        });
+}
+
+function startQRPolling() {
+    qrInterval = setInterval(pollQR, 2000);
+    pollQR();
+}
+
+function stopQRPolling() {
+    if (qrInterval) {
+        clearInterval(qrInterval);
+        qrInterval = null;
+    }
+}
+
+function pollQR() {
+    fetch('/whatsapp/qr/')
+        .then(r => r.json())
+        .then(d => {
+            if (d.status === 'connected') {
+                updateUI('connected', d);
+                stopQRPolling();
+            } else if (d.status === 'scanning') {
+                updateUI('scanning', d);
+            } else if (d.status === 'transitioning') {
+                updateUI('transitioning');
+            } else if (d.status === 'loading') {
+                updateUI('loading');
+            } else {
+                updateUI('disconnected');
+                stopQRPolling();
+            }
+        });
+}
+
+function updateUI(status, data) {
+    data = data || {};
+    const statusIcon = document.getElementById('statusIcon');
+    const statusText = document.getElementById('statusText');
+    const statusDetail = document.getElementById('statusDetail');
+
+    document.getElementById('statusSection').style.display = 'block';
+    document.getElementById('qrSection').style.display = 'none';
+    document.getElementById('connectedSection').style.display = 'none';
+    document.getElementById('connectBtn').style.display = 'none';
+    document.getElementById('disconnectBtn').style.display = 'none';
+
+    if (status === 'connected') {
+        document.getElementById('statusSection').style.display = 'none';
+        document.getElementById('connectedSection').style.display = 'block';
+        document.getElementById('connectedInfo').textContent = data.name || 'WhatsApp Web';
+        document.getElementById('disconnectBtn').style.display = 'inline-block';
+        document.getElementById('connectBtn').disabled = false;
+        document.getElementById('connectBtn').innerHTML = '<i class="bi bi-plug"></i> Connect WhatsApp';
+        updateSidebarStatus('connected');
+    } else if (status === 'scanning') {
+        document.getElementById('statusSection').style.display = 'none';
+        document.getElementById('qrSection').style.display = 'block';
+        if (data.qr) {
+            document.getElementById('qrImage').src = 'data:image/png;base64,' + data.qr;
+        }
+        document.getElementById('disconnectBtn').style.display = 'inline-block';
+        updateSidebarStatus('scanning');
+    } else if (status === 'transitioning') {
+        statusIcon.innerHTML = '<i class="bi bi-arrow-repeat text-warning"></i>';
+        statusText.textContent = 'Almost there...';
+        statusDetail.textContent = 'QR scanned, loading WhatsApp...';
+        document.getElementById('disconnectBtn').style.display = 'inline-block';
+        updateSidebarStatus('scanning');
+    } else if (status === 'loading') {
+        statusIcon.innerHTML = '<i class="bi bi-hourglass-split text-warning"></i>';
+        statusText.textContent = 'Loading Browser...';
+        statusDetail.textContent = 'Chrome is starting, please wait...';
+        document.getElementById('disconnectBtn').style.display = 'inline-block';
+        updateSidebarStatus('loading');
+    } else {
+        statusIcon.innerHTML = '<i class="bi bi-plug text-danger"></i>';
+        statusText.textContent = 'Disconnected';
+        statusDetail.textContent = 'WhatsApp Web is not connected';
+        document.getElementById('connectBtn').style.display = 'inline-block';
+        document.getElementById('connectBtn').disabled = false;
+        document.getElementById('connectBtn').innerHTML = '<i class="bi bi-plug"></i> Connect WhatsApp';
+        updateSidebarStatus('disconnected');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/whatsapp/status/')
+        .then(r => r.json())
+        .then(d => {
+            if (d.status === 'connected') {
+                updateUI('connected', d);
+            } else if (d.status === 'scanning' || d.status === 'loading') {
+                startQRPolling();
+            }
+        });
+});
+</script>
+{% endblock %}
